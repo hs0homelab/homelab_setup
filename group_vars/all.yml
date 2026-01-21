@@ -1,0 +1,55 @@
+---
+# Variáveis comuns a todos os hosts (neste caso, apenas um)
+docker_compose_version: "v2.24.5"
+
+# Tailscale
+tailscale_hostname: "homelab"
+tailscale_dns_name: "homelab.weasel-hadar.ts.net"
+
+# Caddy (Proxy Reverso)
+caddy_data_dir: "/opt/caddy/data"
+caddy_config_dir: "/opt/caddy/config"
+caddy_log_dir: "/opt/caddy/logs"
+caddy_docker_network: "homelab_proxy_network" # Nome da rede Docker dedicada
+
+# Subdomínios para os serviços (usados no Caddyfile)
+bookstack_subdomain: "bookstack"
+paperless_subdomain: "paperless"
+immich_subdomain: "immich"
+syncthing_subdomain: "syncthing"
+searxng_subdomain: "searxng"
+bentopdf_subdomain: "bentopdf"
+netdata_subdomain: "netdata"
+adguard_subdomain: "adguard" # Para a interface web do AdGuard Home
+
+# Manutenção
+maintenance_cron_hour: "3"
+maintenance_cron_minute: "0"
+
+# Backup
+backup_target_smb_path: "backup homelab" # O subdiretório dentro da partilha SMB
+backup_cron_hour: "2"
+backup_cron_minute: "0"
+
+# Configurações do monitor
+monitor_off_delay_seconds: 30
+
+# --- Definição de Portas para Evitar Conflitos ---
+# Estas são as portas que serão expostas no HOST.
+# Serviços acessíveis APENAS via Caddy NÃO terão portas listadas aqui.
+
+# AdGuard Home (DNS)
+adguard_dns_port_tcp: 53
+adguard_dns_port_udp: 53
+
+# Samba
+samba_port_tcp: 445
+samba_port_udp_nbt: 137
+samba_port_udp_datagram: 138
+
+# Netdata (se instalado no host)
+netdata_web_port: 19999
+
+# Outras portas comuns (SSH, Tailscale)
+ssh_port: 22
+tailscale_port_udp: 41641
