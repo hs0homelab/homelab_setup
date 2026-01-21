@@ -1,0 +1,12 @@
+---
+# Este ficheiro será preenchido pelo initial_setup.sh
+# Exemplo de conteúdo esperado:
+# new_sudo_user: "homelabadmin"
+# samba_user: "sambauser"
+# samba_share_path: "/mnt/share"
+# discord_webhook_url: "https://discord.com/api/webhooks/..."
+# discord_channel_id: "1234567890"
+# backup_target_smb_host: "192.168.1.250"
+# backup_target_smb_share: "share"
+# backup_user: "hugo"
+# backup_password: "{{ vault_samba_password }}"
