@@ -1,0 +1,7 @@
+[homelab_smb_backup]
+type = smb
+host = {{ backup_target_smb_host }}
+share = {{ backup_target_smb_share }}
+user = {{ backup_user }}
+pass = {{ backup_password | b64encode }}
+domain =

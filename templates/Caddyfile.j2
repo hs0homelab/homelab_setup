@@ -1,0 +1,62 @@
+# Caddyfile para o Homelab com Tailscale
+# https://caddyserver.com/docs/caddyfile
+
+# Global options for Caddy
+{
+  # Enable the Tailscale TLS issuer
+  tls {
+    issuer tailscale {
+      hostname {{ tailscale_hostname }}
+      socket /var/run/tailscale/tailscaled.sock
+    }
+  }
+
+  log {
+    output file /var/log/caddy/access.log
+    format json
+  }
+}
+
+# --- Service Definitions ---
+# Each service will be accessible via a subdomain of your Tailscale DNS name.
+# Example: https://bookstack.homelab.weasel-hadar.ts.net
+
+# AdGuard Home Web Interface
+{{ adguard_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net {
+  reverse_proxy adguardhome:3000
+}
+
+# BookStack
+{{ bookstack_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net {
+  reverse_proxy bookstack:8080
+}
+
+# Paperless-ngx
+{{ paperless_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net {
+  reverse_proxy paperless:8000
+}
+
+# Immich
+{{ immich_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net {
+  reverse_proxy immich:2283
+}
+
+# Syncthing Web Interface
+{{ syncthing_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net {
+  reverse_proxy syncthing:8384
+}
+
+# SearXNG
+{{ searxng_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net {
+  reverse_proxy searxng:8081
+}
+
+# BentoPDF
+{{ bentopdf_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net {
+  reverse_proxy bentopdf:8082
+}
+
+# Netdata Web Interface (assumindo instalação no host)
+{{ netdata_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net {
+  reverse_proxy localhost:{{ netdata_web_port }}
+}
