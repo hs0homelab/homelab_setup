@@ -1,0 +1,63 @@
+---
+- name: Criar diretórios para BookStack
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/bookstack/data
+    - /opt/bookstack/db
+
+- name: Criar ficheiro docker-compose.yml para BookStack
+  ansible.builtin.copy:
+    dest: /opt/bookstack/docker-compose.yml
+    content: |
+      version: "3.8"
+      services:
+        bookstack_db:
+          image: mariadb:10.6
+          container_name: bookstack_db
+          restart: unless-stopped
+          environment:
+            MYSQL_ROOT_PASSWORD: "{{ vault_bookstack_db_root_password }}" # Adicionar ao vault
+            MYSQL_DATABASE: bookstack
+            MYSQL_USER: bookstack
+            MYSQL_PASSWORD: "{{ vault_bookstack_db_password }}" # Adicionar ao vault
+          volumes:
+            - /opt/bookstack/db:/var/lib/mysql
+          networks:
+            - {{ caddy_docker_network }}
+
+        bookstack:
+          image: lscr.io/linuxserver/bookstack:latest
+          container_name: bookstack
+          restart: unless-stopped
+          environment:
+            APP_URL: "https://{{ bookstack_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net"
+            DB_HOST: bookstack_db:3306
+            DB_DATABASE: bookstack
+            DB_USERNAME: bookstack
+            DB_PASSWORD: "{{ vault_bookstack_db_password }}"
+            PUID: 1000 # Ajustar se o seu utilizador não for 1000
+            PGID: 1000 # Ajustar se o seu grupo não for 1000
+          volumes:
+            - /opt/bookstack/data:/config
+          depends_on:
+            - bookstack_db
+          networks:
+            - {{ caddy_docker_network }}
+
+      networks:
+        {{ caddy_docker_network }}:
+          external: true
+  notify: Iniciar BookStack
+
+  # Adicionar ao group_vars/all/vault.yml:
+  # vault_bookstack_db_root_password: "SUA_PASSWORD_FORTE"
+  # vault_bookstack_db_password: "SUA_PASSWORD_FORTE"
+
+  handlers:
+    - name: Iniciar BookStack
+      community.docker.docker_compose:
+        project_src: /opt/bookstack
+        state: present

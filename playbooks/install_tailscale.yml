@@ -1,0 +1,39 @@
+---
+- name: Instalar Tailscale
+  ansible.builtin.block:
+    - name: Instalar dependências do Tailscale
+      ansible.builtin.apt:
+        name:
+          - curl
+          - gnupg
+        state: present
+
+    - name: Adicionar chave GPG do Tailscale
+      ansible.builtin.apt_key:
+        url: https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_distribution_release }}.gpg
+        state: present
+
+    - name: Adicionar repositório Tailscale APT
+      ansible.builtin.apt_repository:
+        repo: deb https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main
+        state: present
+        update_cache: yes
+
+    - name: Instalar pacote Tailscale
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+
+    - name: Iniciar e autenticar Tailscale
+      ansible.builtin.command: "tailscale up --authkey={{ tailscale_auth_key }} --hostname {{ tailscale_hostname }}"
+      args:
+        creates: /var/lib/tailscale/tailscaled.state
+      register: tailscale_auth_result
+      changed_when: tailscale_auth_result.rc != 0
+
+    - name: Configurar UFW - Permitir Tailscale (porta UDP padrão)
+      community.general.ufw:
+        rule: allow
+        port: "{{ tailscale_port_udp }}"
+        proto: udp
+        comment: "Allow Tailscale traffic"

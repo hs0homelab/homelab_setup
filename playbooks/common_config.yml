@@ -1,0 +1,30 @@
+---
+- name: Atualizar pacotes do sistema
+  ansible.builtin.apt:
+    update_cache: yes
+    upgrade: dist
+    autoremove: yes
+
+- name: Instalar pacotes essenciais
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - ufw # Firewall
+      - jq # Para processar JSON nas notificações Discord
+    state: present
+
+- name: Configurar UFW (firewall) - Permitir SSH
+  community.general.ufw:
+    rule: allow
+    port: "{{ ssh_port }}"
+    proto: tcp
+
+- name: Configurar UFW - Ativar
+  community.general.ufw:
+    state: enabled
+    default: deny
+    # log: full # Opcional: para logging detalhado do UFW

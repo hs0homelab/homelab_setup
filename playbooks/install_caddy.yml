@@ -1,0 +1,78 @@
+---
+- name: Criar rede Docker personalizada para o Caddy e serviços
+  community.docker.docker_network:
+    name: "{{ caddy_docker_network }}"
+    driver: bridge
+    state: present
+
+- name: Criar diretórios para Caddy
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ caddy_data_dir }}"
+    - "{{ caddy_config_dir }}"
+    - "{{ caddy_log_dir }}"
+
+- name: Criar Caddyfile (configuração do Caddy)
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ caddy_config_dir }}/Caddyfile"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reiniciar Caddy
+
+- name: Criar ficheiro docker-compose.yml para Caddy
+  ansible.builtin.copy:
+    dest: /opt/caddy/docker-compose.yml
+    content: |
+      version: "3.8"
+      services:
+        caddy:
+          image: caddycommunity/caddy-tailscale:latest
+          container_name: caddy
+          hostname: caddy
+          restart: unless-stopped
+          ports:
+            - "80:80"
+            - "443:443"
+          volumes:
+            - "{{ caddy_config_dir }}/Caddyfile:/etc/caddy/Caddyfile"
+            - "{{ caddy_data_dir }}:/data"
+            - "{{ caddy_config_dir }}:/config"
+            - "{{ caddy_log_dir }}:/var/log/caddy"
+            - "/var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock"
+          environment:
+            CADDY_INGRESS_NETWORKS: "tailscale0"
+          cap_add:
+            - NET_ADMIN
+          networks:
+            - {{ caddy_docker_network }}
+
+      networks:
+        {{ caddy_docker_network }}:
+          external: true
+
+- name: Iniciar Caddy
+  community.docker.docker_compose:
+    project_src: /opt/caddy
+    state: present
+  notify: Reiniciar Caddy # Garante que o handler é executado na primeira vez
+
+- name: Configurar UFW - Permitir Caddy (HTTP/HTTPS) no host
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - 80
+    - 443
+
+  handlers:
+    - name: Reiniciar Caddy
+      community.docker.docker_compose:
+        project_src: /opt/caddy
+        state: present
+        restarted: yes

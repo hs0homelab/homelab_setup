@@ -1,0 +1,48 @@
+---
+- name: Criar diretórios para AdGuard Home
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/adguardhome/work
+    - /opt/adguardhome/conf
+
+- name: Criar ficheiro docker-compose.yml para AdGuard Home
+  ansible.builtin.copy:
+    dest: /opt/adguardhome/docker-compose.yml
+    content: |
+      version: "3.3"
+      services:
+        adguardhome:
+          image: adguard/adguardhome
+          container_name: adguardhome
+          ports:
+            - "{{ adguard_dns_port_tcp }}:53/tcp"
+            - "{{ adguard_dns_port_udp }}:53/udp"
+          volumes:
+            - /opt/adguardhome/work:/opt/adguardhome/work
+            - /opt/adguardhome/conf:/opt/adguardhome/conf
+          restart: unless-stopped
+          networks:
+            - {{ caddy_docker_network }} # Conecta o serviço à rede personalizada
+
+      networks:
+        {{ caddy_docker_network }}:
+          external: true
+  notify: Iniciar AdGuard Home
+
+- name: Configurar UFW - Permitir AdGuard Home (DNS)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: "{{ item_proto }}"
+  loop:
+    - { port: "{{ adguard_dns_port_tcp }}", item_proto: tcp }
+    - { port: "{{ adguard_dns_port_udp }}", item_proto: udp }
+
+  handlers:
+    - name: Iniciar AdGuard Home
+      community.docker.docker_compose:
+        project_src: /opt/adguardhome
+        state: present

@@ -1,0 +1,122 @@
+---
+- name: Criar diretório para scripts de manutenção
+  ansible.builtin.file:
+    path: /usr/local/bin/homelab-maintenance
+    state: directory
+    mode: '0755'
+
+- name: Criar script de notificação Discord
+  ansible.builtin.copy:
+    dest: /usr/local/bin/homelab-maintenance/send_discord_notification.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      WEBHOOK_URL="{{ discord_webhook_url }}"
+      CHANNEL_ID="{{ discord_channel_id }}"
+      TITLE="$1"
+      DESCRIPTION="$2"
+      COLOR="${3:-5814783}" # Cor padrão (azul claro)
+      USERNAME="${4:-Homelab Bot}"
+      AVATAR_URL="${5:-https://i.imgur.com/your_bot_avatar.png}" # Substituir pela URL do seu avatar
+
+      # Verifica se jq está instalado
+      if ! command -v jq &> /dev/null; then
+          echo "jq não está instalado. Não é possível formatar o JSON para Discord."
+          exit 1
+      fi
+
+      JSON_PAYLOAD=$(jq -n \
+                      --arg username "$USERNAME" \
+                      --arg avatar_url "$AVATAR_URL" \
+                      --arg title "$TITLE" \
+                      --arg description "$DESCRIPTION" \
+                      --argjson color "$COLOR" \
+                      '{
+                        username: $username,
+                        avatar_url: $avatar_url,
+                        embeds: [
+                          {
+                            title: $title,
+                            description: $description,
+                            color: $color
+                          }
+                        ]
+                      }')
+
+      # Adiciona o footer com o Channel ID se estiver definido
+      if [ -n "$CHANNEL_ID" ]; then
+        JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq --arg channel "$CHANNEL_ID" '.embeds[0].footer = {"text": "Canal ID: " + $channel}')
+      fi
+
+      curl -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" "$WEBHOOK_URL"
+
+- name: Criar script de manutenção semanal (com notificações Discord)
+  ansible.builtin.copy:
+    dest: /usr/local/bin/homelab-maintenance/weekly_maintenance.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+
+      LOG_FILE="/var/log/homelab-maintenance.log"
+      NOTIFICATION_SCRIPT="/usr/local/bin/homelab-maintenance/send_discord_notification.sh"
+
+      echo "--- Manutenção Semanal Iniciada: $(date) ---" >> $LOG_FILE
+      $NOTIFICATION_SCRIPT "Manutenção Homelab" "A manutenção semanal foi iniciada." 16776960 # Cor amarela
+
+      echo "1. Atualizando pacotes do sistema..." >> $LOG_FILE
+      sudo apt update >> $LOG_FILE 2>&1
+      sudo apt upgrade -y >> $LOG_FILE 2>&1
+      sudo apt autoremove -y >> $LOG_FILE 2>&1
+      sudo apt clean >> $LOG_FILE 2>&1
+
+      echo "2. Atualizando imagens e containers Docker..." >> $LOG_FILE
+      for d in /opt/*/ ; do
+        if [ -f "$d/docker-compose.yml" ]; then
+          echo "   - Atualizando $d" >> $LOG_FILE
+          (cd "$d" && sudo docker-compose pull && sudo docker-compose up -d --remove-orphans) >> $LOG_FILE 2>&1
+        fi
+      done
+
+      echo "3. Limpeza de Docker (imagens, containers e volumes não utilizados)..." >> $LOG_FILE
+      sudo docker system prune -af >> $LOG_FILE 2>&1
+
+      echo "4. Limpeza de logs antigos (ex: logs do journalctl com mais de 7 dias)..." >> $LOG_FILE
+      sudo journalctl --vacuum-time=7d >> $LOG_FILE 2>&1
+
+      MAINTENANCE_STATUS=$?
+
+      if [ $MAINTENANCE_STATUS -eq 0 ]; then
+        echo "--- Manutenção Semanal Concluída: $(date) ---" >> $LOG_FILE
+        $NOTIFICATION_SCRIPT "Manutenção Homelab" "A manutenção semanal foi concluída com sucesso." 65280 # Cor verde
+      else
+        echo "--- Manutenção Homelab - ERRO: $(date) ---" >> $LOG_FILE
+        $NOTIFICATION_SCRIPT "Manutenção Homelab - ERRO" "Ocorreram erros durante a manutenção semanal. Verifique os logs em $LOG_FILE." 16711680 # Cor vermelha
+      fi
+
+- name: Agendar script de manutenção semanal via cron
+  ansible.builtin.cron:
+    name: "Homelab Weekly Maintenance"
+    weekday: "1" # Segunda-feira (0=Domingo, 1=Segunda)
+    hour: "{{ maintenance_cron_hour }}"
+    minute: "{{ maintenance_cron_minute }}"
+    job: "/usr/local/bin/homelab-maintenance/weekly_maintenance.sh >> /var/log/homelab-maintenance.log 2>&1"
+    user: root
+
+- name: Criar script para desligar o monitor
+  ansible.builtin.copy:
+    dest: /usr/local/bin/homelab-maintenance/turn_off_monitor.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      sleep {{ monitor_off_delay_seconds }}
+      # Comando para desligar o monitor (funciona para a maioria dos sistemas X)
+      xset dpms force off
+      # Para sistemas sem X (apenas terminal), pode ser necessário algo como:
+      # setterm -blank 1 -powerdown 1 -powersave on < /dev/tty0 > /dev/tty0
+
+- name: Agendar script para desligar o monitor no arranque
+  ansible.builtin.cron:
+    name: "Turn off monitor after boot"
+    special_time: reboot
+    job: "/usr/local/bin/homelab-maintenance/turn_off_monitor.sh >> /var/log/homelab-monitor.log 2>&1"
+    user: "{{ new_sudo_user }}"

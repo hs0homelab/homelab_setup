@@ -1,0 +1,69 @@
+---
+- name: Instalar rclone e dependências
+  ansible.builtin.apt:
+    name:
+      - rclone
+      - cifs-utils
+      - jq
+    state: present
+
+- name: Criar diretório para scripts de backup
+  ansible.builtin.file:
+    path: /usr/local/bin/homelab-backup
+    state: directory
+    mode: '0755'
+
+- name: Criar ficheiro de configuração rclone para SMB
+  ansible.builtin.template:
+    src: rclone.conf.j2
+    dest: /root/.config/rclone/rclone.conf
+    owner: root
+    group: root
+    mode: '0600'
+  vars:
+    smb_host: "{{ backup_target_smb_host }}"
+    smb_share: "{{ backup_target_smb_share }}"
+    smb_user: "{{ backup_user }}"
+    smb_password: "{{ backup_password }}"
+
+- name: Criar script de backup diário
+  ansible.builtin.copy:
+    dest: /usr/local/bin/homelab-backup/daily_backup.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+
+      LOG_FILE="/var/log/homelab-backup.log"
+      NOTIFICATION_SCRIPT="/usr/local/bin/homelab-maintenance/send_discord_notification.sh"
+      BACKUP_SOURCE_DIR="/opt"
+      BACKUP_DESTINATION="homelab_smb_backup:{{ backup_target_smb_path }}"
+
+      echo "--- Backup Iniciado: $(date) ---" >> $LOG_FILE
+      $NOTIFICATION_SCRIPT "Backup Homelab" "O backup diário foi iniciado." 16776960 # Cor amarela
+
+      /usr/bin/rclone sync "$BACKUP_SOURCE_DIR" "$BACKUP_DESTINATION" \
+        --exclude "*/cache/**" \
+        --exclude "*/logs/**" \
+        --exclude "*/tmp/**" \
+        --exclude "*/.git/**" \
+        --exclude "*/node_modules/**" \
+        --log-file "$LOG_FILE" \
+        --verbose
+
+      BACKUP_STATUS=$?
+
+      if [ $BACKUP_STATUS -eq 0 ]; then
+        echo "--- Backup Concluído com Sucesso: $(date) ---" >> $LOG_FILE
+        $NOTIFICATION_SCRIPT "Backup Homelab" "O backup diário foi concluído com sucesso." 65280 # Cor verde
+      else
+        echo "--- Backup Falhou: $(date) ---" >> $LOG_FILE
+        $NOTIFICATION_SCRIPT "Backup Homelab - ERRO" "O backup diário falhou. Verifique os logs em $LOG_FILE." 16711680 # Cor vermelha
+      fi
+
+- name: Agendar script de backup diário via cron
+  ansible.builtin.cron:
+    name: "Homelab Daily Backup"
+    hour: "{{ backup_cron_hour }}"
+    minute: "{{ backup_cron_minute }}"
+    job: "/usr/local/bin/homelab-backup/daily_backup.sh >> /var/log/homelab-backup.log 2>&1"
+    user: root

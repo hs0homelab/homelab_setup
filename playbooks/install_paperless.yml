@@ -1,0 +1,79 @@
+---
+- name: Criar diretórios para Paperless-ngx
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/paperless/data
+    - /opt/paperless/media
+    - /opt/paperless/export
+    - /opt/paperless/consume
+    - /opt/paperless/db
+    - /opt/paperless/redis
+
+- name: Criar ficheiro docker-compose.yml para Paperless-ngx
+  ansible.builtin.copy:
+    dest: /opt/paperless/docker-compose.yml
+    content: |
+      version: "3.8"
+      services:
+        broker:
+          image: redis:7-alpine
+          container_name: paperless_broker
+          restart: unless-stopped
+          volumes:
+            - /opt/paperless/redis:/data
+          networks:
+            - {{ caddy_docker_network }}
+
+        db:
+          image: postgres:13
+          container_name: paperless_db
+          restart: unless-stopped
+          environment:
+            POSTGRES_DB: paperless
+            POSTGRES_USER: paperless
+            POSTGRES_PASSWORD: "{{ vault_paperless_db_password }}" # Adicionar ao vault
+          volumes:
+            - /opt/paperless/db:/var/lib/postgresql/data
+          networks:
+            - {{ caddy_docker_network }}
+
+        webserver:
+          image: ghcr.io/paperless-ngx/paperless-ngx:latest
+          container_name: paperless_webserver
+          restart: unless-stopped
+          environment:
+            PAPERLESS_URL: "https://{{ paperless_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net"
+            PAPERLESS_REDIS: redis://broker:6379
+            PAPERLESS_DB_HOST: db
+            PAPERLESS_DB_NAME: paperless
+            PAPERLESS_DB_USER: paperless
+            PAPERLESS_DB_PASSWORD: "{{ vault_paperless_db_password }}"
+            USERMAP_UID: 1000 # Ajustar se o seu utilizador não for 1000
+            USERMAP_GID: 1000 # Ajustar se o seu grupo não for 1000
+          volumes:
+            - /opt/paperless/data:/usr/src/paperless/data
+            - /opt/paperless/media:/usr/src/paperless/media
+            - /opt/paperless/export:/usr/src/paperless/export
+            - /opt/paperless/consume:/usr/src/paperless/consume
+          depends_on:
+            - db
+            - broker
+          networks:
+            - {{ caddy_docker_network }}
+
+      networks:
+        {{ caddy_docker_network }}:
+          external: true
+  notify: Iniciar Paperless-ngx
+
+  # Adicionar ao group_vars/all/vault.yml:
+  # vault_paperless_db_password: "SUA_PASSWORD_FORTE"
+
+  handlers:
+    - name: Iniciar Paperless-ngx
+      community.docker.docker_compose:
+        project_src: /opt/paperless
+        state: present

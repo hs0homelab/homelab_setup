@@ -1,0 +1,38 @@
+---
+- name: Criar diretórios para SearXNG
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/searxng/config
+
+- name: Criar ficheiro docker-compose.yml para SearXNG
+  ansible.builtin.copy:
+    dest: /opt/searxng/docker-compose.yml
+    content: |
+      version: "3.8"
+      services:
+        searxng:
+          image: searxng/searxng:latest
+          container_name: searxng
+          restart: unless-stopped
+          environment:
+            PUID: 1000 # Ajustar
+            PGID: 1000 # Ajustar
+            TZ: Europe/Lisbon # Ajustar
+          volumes:
+            - /opt/searxng/config:/etc/searxng
+          networks:
+            - {{ caddy_docker_network }}
+
+      networks:
+        {{ caddy_docker_network }}:
+          external: true
+  notify: Iniciar SearXNG
+
+  handlers:
+    - name: Iniciar SearXNG
+      community.docker.docker_compose:
+        project_src: /opt/searxng
+        state: present

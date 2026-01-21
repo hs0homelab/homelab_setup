@@ -1,0 +1,68 @@
+---
+- name: Instalar Samba
+  ansible.builtin.apt:
+    name: samba
+    state: present
+
+- name: Criar diretório de partilha Samba
+  ansible.builtin.file:
+    path: "{{ samba_share_path }}"
+    state: directory
+    mode: '0777' # Ajustar para produção após teste, ex: '0770'
+    owner: nobody
+    group: nogroup
+
+- name: Configurar partilha Samba
+  ansible.builtin.blockinfile:
+    path: /etc/samba/smb.conf
+    block: |
+      [sync]
+         comment = Partilha de Ficheiros
+         path = {{ samba_share_path }}
+         browseable = yes
+         read only = no
+         create mask = 0777
+         directory mask = 0777
+         valid users = {{ samba_user }}
+         force user = {{ samba_user }}
+         guest ok = no
+         vfs objects = catia fruit streams_xattr
+         fruit:aapl = yes
+         fruit:encoding = native
+         ea support = yes
+         store dos attributes = yes
+         map acl inherit = yes
+         unix extensions = no
+         wide links = yes
+    marker: "# ANSIBLE MANAGED BLOCK FOR SAMBA SHARE"
+  notify: Restart smbd
+
+- name: Criar utilizador Samba
+  ansible.builtin.expect:
+    command: smbpasswd -a {{ samba_user }}
+    responses:
+      (?i)new samba password: "{{ samba_password }}"
+      (?i)retype new samba password: "{{ samba_password }}"
+  args:
+    creates: /var/lib/samba/private/passdb.tdb
+
+- name: Configurar UFW - Permitir Samba (SMB)
+  community.general.ufw:
+    rule: allow
+    port: "{{ samba_port_tcp }}"
+    proto: tcp
+
+- name: Configurar UFW - Permitir NetBIOS (UDP)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: udp
+  loop:
+    - "{{ samba_port_udp_nbt }}"
+    - "{{ samba_port_udp_datagram }}"
+
+  handlers:
+    - name: Restart smbd
+      ansible.builtin.service:
+        name: smbd
+        state: restarted

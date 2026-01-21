@@ -1,0 +1,55 @@
+---
+- name: Criar diretórios para Syncthing
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/syncthing/config
+    - /opt/syncthing/data # Onde os ficheiros sincronizados serão guardados
+
+- name: Criar ficheiro docker-compose.yml para Syncthing
+  ansible.builtin.copy:
+    dest: /opt/syncthing/docker-compose.yml
+    content: |
+      version: "3.8"
+      services:
+        syncthing:
+          image: lscr.io/linuxserver/syncthing:latest
+          container_name: syncthing
+          restart: unless-stopped
+          environment:
+            PUID: 1000 # Ajustar
+            PGID: 1000 # Ajustar
+            TZ: Europe/Lisbon # Ajustar
+          # As portas de comunicação P2P ainda precisam ser expostas para o host
+          ports:
+            - "{{ syncthing_tcp_port }}:22000/tcp"
+            - "{{ syncthing_udp_port }}:21027/udp"
+            - "21027:21027/udp" # Para descoberta de rede
+          volumes:
+            - /opt/syncthing/config:/config
+            - /opt/syncthing/data:/data # Onde os dados sincronizados serão armazenados
+          networks:
+            - {{ caddy_docker_network }}
+
+      networks:
+        {{ caddy_docker_network }}:
+          external: true
+  notify: Iniciar Syncthing
+
+- name: Configurar UFW - Permitir Syncthing (TCP/UDP)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: "{{ item_proto }}"
+  loop:
+    - { port: "{{ syncthing_tcp_port }}", item_proto: tcp }
+    - { port: "{{ syncthing_udp_port }}", item_proto: udp }
+    - { port: "21027", item_proto: udp } # Para descoberta
+
+  handlers:
+    - name: Iniciar Syncthing
+      community.docker.docker_compose:
+        project_src: /opt/syncthing
+        state: present

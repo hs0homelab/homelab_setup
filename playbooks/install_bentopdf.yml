@@ -1,0 +1,32 @@
+---
+- name: Criar diretórios para BentoPDF
+  ansible.builtin.file:
+    path: /opt/bentopdf
+    state: directory
+    mode: '0755'
+
+- name: Criar ficheiro docker-compose.yml para BentoPDF
+  ansible.builtin.copy:
+    dest: /opt/bentopdf/docker-compose.yml
+    content: |
+      version: "3.8"
+      services:
+        bentopdf:
+          image: bentopdf/bentopdf:latest
+          container_name: bentopdf
+          restart: unless-stopped
+          # BentoPDF não tem volumes de dados persistentes por padrão,
+          # mas pode adicionar se precisar de configurações personalizadas.
+          networks:
+            - {{ caddy_docker_network }}
+
+      networks:
+        {{ caddy_docker_network }}:
+          external: true
+  notify: Iniciar BentoPDF
+
+  handlers:
+    - name: Iniciar BentoPDF
+      community.docker.docker_compose:
+        project_src: /opt/bentopdf
+        state: present

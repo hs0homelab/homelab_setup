@@ -1,0 +1,25 @@
+---
+- name: Criar novo utilizador sudo e configurar acesso
+  ansible.builtin.user:
+    name: "{{ new_sudo_user }}"
+    password: "{{ new_sudo_password | password_hash('sha512') }}"
+    groups: sudo
+    append: yes
+    state: present
+    shell: /bin/bash
+
+- name: Adicionar novo utilizador ao grupo docker
+  ansible.builtin.user:
+    name: "{{ new_sudo_user }}"
+    groups: docker
+    append: yes
+  # Esta tarefa só será executada se o Docker for instalado
+  when: ansible_facts.services['docker.service'] is defined and ansible_facts.services['docker.service'].state == 'running'
+
+- name: Configurar sudoers para o novo utilizador (sem password para comandos sudo)
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/{{ new_sudo_user }}
+    line: "{{ new_sudo_user }} ALL=(ALL) NOPASSWD: ALL"
+    create: yes
+    mode: '0440'
+    validate: /usr/sbin/visudo -cf %s

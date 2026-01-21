@@ -1,0 +1,13 @@
+---
+- name: Instalar Netdata (utilizando script de instalação oficial no host)
+  ansible.builtin.shell:
+    cmd: bash <(curl -Ss https://my-netdata.io/kickstart.sh) --dont-wait
+    creates: /usr/sbin/netdata
+  args:
+    warn: no
+
+- name: Configurar UFW - Permitir Netdata (porta 19999) no host
+  community.general.ufw:
+    rule: allow
+    port: "{{ netdata_web_port }}"
+    proto: tcp

@@ -1,0 +1,60 @@
+---
+- name: Configuração inicial do servidor HomeLab
+  hosts: homelab_servers
+  become: yes
+  vars_files:
+    - group_vars/all/vault.yml
+
+  tasks:
+    - name: "Incluir playbook para criar novo utilizador sudo"
+      ansible.builtin.include_tasks: setup_user.yml
+
+    - name: "Incluir playbook para configurações comuns do sistema"
+      ansible.builtin.include_tasks: common_config.yml
+
+    - name: "Incluir playbook para instalar Docker e Docker Compose"
+      ansible.builtin.include_tasks: install_docker.yml
+
+    - name: "Incluir playbook para instalar Tailscale"
+      ansible.builtin.include_tasks: install_tailscale.yml
+
+    - name: "Incluir playbook para instalar Caddy como proxy reverso"
+      ansible.builtin.include_tasks: install_caddy.yml
+
+    - name: "Incluir playbook para instalar e configurar Samba"
+      ansible.builtin.include_tasks: install_samba.yml
+
+    - name: "Incluir playbook para instalar AdGuard Home"
+      ansible.builtin.include_tasks: install_adguardhome.yml
+
+    - name: "Incluir playbook para instalar BookStack"
+      ansible.builtin.include_tasks: install_bookstack.yml
+
+    - name: "Incluir playbook para instalar Paperless-ngx"
+      ansible.builtin.include_tasks: install_paperless.yml
+
+    - name: "Incluir playbook para instalar Immich"
+      ansible.builtin.include_tasks: install_immich.yml
+
+    - name: "Incluir playbook para instalar Syncthing"
+      ansible.builtin.include_tasks: install_syncthing.yml
+
+    - name: "Incluir playbook para instalar SearXNG"
+      ansible.builtin.include_tasks: install_searxng.yml
+
+    - name: "Incluir playbook para instalar BentoPDF"
+      ansible.builtin.include_tasks: install_bentopdf.yml
+
+    - name: "Incluir playbook para instalar Netdata"
+      ansible.builtin.include_tasks: install_netdata.yml
+
+    - name: "Incluir playbook para configurar backups"
+      ansible.builtin.include_tasks: setup_backup.yml
+
+    - name: "Incluir playbook para configurar manutenção semanal e desligar monitor"
+      ansible.builtin.include_tasks: setup_maintenance.yml
+
+    - name: "Reiniciar o servidor se necessário (ex: atualizações de kernel)"
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+      when: ansible_reboot_required_file.stat.exists is defined and ansible_reboot_required_file.stat.exists

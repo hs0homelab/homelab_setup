@@ -1,0 +1,99 @@
+---
+- name: Criar diretórios para Immich
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/immich/upload
+    - /opt/immich/db
+    - /opt/immich/redis
+
+- name: Criar ficheiro docker-compose.yml para Immich
+  ansible.builtin.copy:
+    dest: /opt/immich/docker-compose.yml
+    content: |
+      version: "3.8"
+      services:
+        redis:
+          image: redis:6.2-alpine
+          container_name: immich_redis
+          restart: unless-stopped
+          volumes:
+            - /opt/immich/redis:/data
+          networks:
+            - {{ caddy_docker_network }}
+
+        database:
+          image: postgres:14
+          container_name: immich_database
+          restart: unless-stopped
+          environment:
+            POSTGRES_PASSWORD: "{{ vault_immich_db_password }}" # Adicionar ao vault
+            POSTGRES_USER: immich
+            POSTGRES_DB: immich
+          volumes:
+            - /opt/immich/db:/var/lib/postgresql/data
+          networks:
+            - {{ caddy_docker_network }}
+
+        immich-server:
+          image: ghcr.io/immich-app/immich-server:latest
+          container_name: immich_server
+          restart: unless-stopped
+          environment:
+            DB_HOSTNAME: database
+            DB_USERNAME: immich
+            DB_PASSWORD: "{{ vault_immich_db_password }}"
+            DB_DATABASE_NAME: immich
+            REDIS_HOSTNAME: redis
+            IMMICH_WEB_URL: "https://{{ immich_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net"
+            IMMICH_API_URL: "https://{{ immich_subdomain }}.{{ tailscale_hostname }}.weasel-hadar.ts.net/api"
+          volumes:
+            - /opt/immich/upload:/usr/src/app/upload
+          depends_on:
+            - database
+            - redis
+          networks:
+            - {{ caddy_docker_network }}
+
+        immich-microservices:
+          image: ghcr.io/immich-app/immich-microservices:latest
+          container_name: immich_microservices
+          restart: unless-stopped
+          environment:
+            DB_HOSTNAME: database
+            DB_USERNAME: immich
+            DB_PASSWORD: "{{ vault_immich_db_password }}"
+            DB_DATABASE_NAME: immich
+            REDIS_HOSTNAME: redis
+          volumes:
+            - /opt/immich/upload:/usr/src/app/upload
+          depends_on:
+            - database
+            - redis
+          networks:
+            - {{ caddy_docker_network }}
+
+        immich-web:
+          image: ghcr.io/immich-app/immich-web:latest
+          container_name: immich_web
+          restart: unless-stopped
+          environment:
+            IMMICH_SERVER_URL: "http://immich-server:3001" # Aceder ao server interno
+          networks:
+            - {{ caddy_docker_network }}
+
+      networks:
+        {{ caddy_docker_network }}:
+          external: true
+  notify: Iniciar Immich
+
+  # Adicionar ao group_vars/all/vault.yml:
+  # vault_immich_db_password: "SUA_PASSWORD_FORTE"
+
+  handlers:
+    - name: Iniciar Immich
+      community.docker.docker_compose:
+        project_src: /opt/immich
+        state: present
